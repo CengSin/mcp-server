@@ -1,0 +1,13 @@
+package tools
+
+import (
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+func RegisterTools(s *server.MCPServer) {
+	s.AddTool(getSearchArticleTool(), mcp.NewTypedToolHandler(searchArticle))
+	s.AddTool(getSearchUserTool(), mcp.NewTypedToolHandler(searchUser))
+	s.AddTool(getUserBenefitRecordsTool(), mcp.NewTypedToolHandler(getUserBenefitRecords))
+	s.AddTool(generateCsvTool(), mcp.NewTypedToolHandler(generateCsv))
+}

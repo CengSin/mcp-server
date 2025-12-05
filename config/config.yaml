@@ -1,0 +1,23 @@
+qdrant:
+  host: "localhost"
+  port: 6334
+
+openAI:
+  baseURL: "https://openrouter.ai/api/v1"
+  apiKey: ""
+
+temporal:
+  hostPort: "localhost:7233"
+
+mysql:
+  host: "localhost"
+  port: 3306
+  userName: "root"
+  password: "rootpassword"
+  DB: "baoer"
+
+minIO:
+  endpoint: "localhost:9000"
+  accessKeyID: "admin"
+  secretAccessKey: "password"
+  bucketName: "financial-exports"
