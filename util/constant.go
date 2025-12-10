@@ -1,5 +1,5 @@
 package util
 
 const (
-	CollectionName = "financial_articles"
+	CollectionName = "724_news_col"
 )
