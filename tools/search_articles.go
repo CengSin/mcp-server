@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/qdrant/go-client/qdrant"
@@ -10,32 +11,61 @@ import (
 	"mcp/server/client"
 	"mcp/server/util"
 	"strings"
+	"time"
 )
 
 func getSearchArticleTool() mcp.Tool {
 	tool := mcp.NewTool("search_articles",
 		mcp.WithDescription("根据自然语言查询金融文章数据库。支持语义搜索。"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("用户的搜索关键词或问题")),
-		mcp.WithNumber("limit", mcp.Description("返回结果数量，默认为 5")))
+		mcp.WithString("query", mcp.Description("用户的搜索关键词或问题")),
+		mcp.WithString("start_time", mcp.Description("开始时间，格式为2006-01-02 15:04:05")),
+		mcp.WithString("end_time", mcp.Description("结束时间，格式为2006-01-02 15:04:05")),
+		mcp.WithNumber("score", mcp.Description("相似度阈值，浮点数类型，范围0到1，表示返回结果的最低相似度，默认为0.5")),
+		mcp.WithNumber("limit", mcp.Description("返回结果数量，默认为 5，最大不超过100")))
 	return tool
 }
 
-func searchArticle(ctx context.Context, request mcp.CallToolRequest, question string) (*mcp.CallToolResult, error) {
-	if len(question) == 0 {
-		return mcp.NewToolResultError("Query argument is required"), nil
+type searchArticleReq struct {
+	Query     string  `json:"query"`
+	StartTime string  `json:"start_time"`
+	EndTime   string  `json:"end_time"`
+	Limit     int     `json:"limit"`
+	Score     float32 `json:"score"`
+}
+
+func searchArticle(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
+	var searchReq searchArticleReq
+	if err := json.Unmarshal([]byte(params), &searchReq); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-	queryVec, err := ai.GetEmbedding(ctx, question)
+	queryVec, err := ai.GetEmbedding(ctx, searchReq.Query)
 	if err != nil {
 		log.Println(fmt.Sprintf("❌ 生成向量失败: %v\n\n", err))
 		return mcp.NewToolResultError(fmt.Sprintf("Embedding failed: %v", err)), nil
 	}
 
-	searchResult, err := client.Qdrant.Query(ctx, &qdrant.QueryPoints{
+	q := &qdrant.QueryPoints{
 		CollectionName: util.CollectionName,
 		Query:          qdrant.NewQuery(queryVec...),
-		Limit:          &[]uint64{3}[0],
+		Limit:          &[]uint64{uint64(searchReq.Limit)}[0],
 		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	}
+
+	if searchReq.StartTime != "" && searchReq.EndTime != "" {
+		startTime, _ := time.Parse(time.DateTime, searchReq.StartTime)
+		endTime, _ := time.Parse(time.DateTime, searchReq.EndTime)
+		filter := &qdrant.Filter{
+			Should: []*qdrant.Condition{
+				qdrant.NewRange("created_at", &qdrant.Range{
+					Gte: qdrant.PtrOf(float64(startTime.Unix())),
+					Lte: qdrant.PtrOf(float64(endTime.Unix())),
+				}),
+			},
+		}
+		q.Filter = filter
+	}
+
+	searchResult, err := client.Qdrant.Query(ctx, q)
 	if err != nil {
 		log.Println("query qdrant failed, err ", err)
 		return mcp.NewToolResultError(fmt.Sprintf("Qdrant search failed: %v", err)), nil
@@ -45,11 +75,13 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, question st
 	var contextBuilder strings.Builder
 	for _, point := range searchResult {
 		// 只有相似度足够高才用 (阈值过滤)
-		if point.Score > 0.5 {
-			content := point.Payload["summary"].GetStringValue()
-			contextBuilder.WriteString(content)
-			contextBuilder.WriteString("\n---\n")
+		if searchReq.Score > 0 && point.Score < searchReq.Score {
+			continue
 		}
+		// 拼接内容
+		content := point.Payload["summary"].GetStringValue()
+		contextBuilder.WriteString(content)
+		contextBuilder.WriteString("\n---\n")
 	}
 
 	contextText := contextBuilder.String()
