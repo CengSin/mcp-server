@@ -29,7 +29,7 @@ func InitMysql(cfg *config.MysqlConfig) {
 	}
 
 	// 构建 DSN 连接字符串
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True",
 		cfg.UserName,
 		cfg.Password,
 		cfg.Host,

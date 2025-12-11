@@ -16,8 +16,13 @@ import (
 
 func getSearchArticleTool() mcp.Tool {
 	tool := mcp.NewTool("search_articles",
-		mcp.WithDescription("根据自然语言查询金融文章数据库。支持语义搜索。"),
-		mcp.WithString("query", mcp.Description("用户的搜索关键词或问题")),
+		mcp.WithDescription(`
+Qdrant 语义检索工具：
+- 适合：模糊查询、自然语言提问、语义相似度判断
+- 不适用：需要按时间排序、获取最新文章、按字段过滤（如 author/date/type）
+如果问题涉及 “最新”、“时间排序”、“按字段过滤”、“数据库字段精确筛选”，不要使用本工具，应使用 MySQL 工具。
+`),
+		mcp.WithString("query", mcp.Description("自然语言问题或长文本查询，将自动生成向量")),
 		mcp.WithString("start_time", mcp.Description("开始时间，格式为2006-01-02 15:04:05")),
 		mcp.WithString("end_time", mcp.Description("结束时间，格式为2006-01-02 15:04:05")),
 		mcp.WithNumber("score", mcp.Description("相似度阈值，浮点数类型，范围0到1，表示返回结果的最低相似度，默认为0.5")),
