@@ -57,13 +57,13 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 	}
 
 	if searchReq.StartTime != "" && searchReq.EndTime != "" {
-		startTime, _ := time.Parse(time.DateTime, searchReq.StartTime)
-		endTime, _ := time.Parse(time.DateTime, searchReq.EndTime)
+		startTime, _ := time.ParseInLocation(time.DateTime, searchReq.StartTime, util.Loc)
+		endTime, _ := time.ParseInLocation(time.DateTime, searchReq.EndTime, util.Loc)
 		filter := &qdrant.Filter{
 			Should: []*qdrant.Condition{
 				qdrant.NewRange("created_at", &qdrant.Range{
-					Gte: qdrant.PtrOf(float64(startTime.Unix())),
-					Lte: qdrant.PtrOf(float64(endTime.Unix())),
+					Gte: qdrant.PtrOf(float64(startTime.UTC().Unix())),
+					Lte: qdrant.PtrOf(float64(endTime.UTC().Unix())),
 				}),
 			},
 		}

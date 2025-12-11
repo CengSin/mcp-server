@@ -6,6 +6,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"mcp/server/client"
 	"mcp/server/dao"
+	"mcp/server/util"
 	"strings"
 	"time"
 )
@@ -43,9 +44,9 @@ func getContentMessages(ctx context.Context, request mcp.CallToolRequest, params
 	tx := client.Mysql.Model(&dao.ContentMessage{})
 
 	if searchReq.StartTime != "" && searchReq.EndTime != "" {
-		startTime, _ := time.Parse(time.DateTime, searchReq.StartTime)
-		endTime, _ := time.Parse(time.DateTime, searchReq.EndTime)
-		tx = tx.Where("created_at between ? and ?", startTime, endTime)
+		startTime, _ := time.ParseInLocation(time.DateTime, searchReq.StartTime, util.Loc)
+		endTime, _ := time.ParseInLocation(time.DateTime, searchReq.EndTime, util.Loc)
+		tx = tx.Where("created_at between ? and ?", startTime.UTC(), endTime.UTC())
 	}
 
 	if searchReq.Keyword != "" {
