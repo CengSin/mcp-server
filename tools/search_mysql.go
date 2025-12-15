@@ -29,10 +29,12 @@ MySQL 精确查询工具：
 }
 
 type getContentMessagesReq struct {
-	Keyword   string `json:"keyword"`
-	StartTime string `json:"start_time"`
-	EndTime   string `json:"end_time"`
-	Limit     int    `json:"limit"`
+	Keyword        string `json:"keyword"`
+	StartTime      string `json:"start_time"`
+	EndTime        string `json:"end_time"`
+	Limit          int    `json:"limit"`
+	OrderBy        string `json:"order_by"`
+	OrderDirection string `json:"order_direction"`
 }
 
 func getContentMessages(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
@@ -51,6 +53,10 @@ func getContentMessages(ctx context.Context, request mcp.CallToolRequest, params
 
 	if searchReq.Keyword != "" {
 		tx = tx.Where("content LIKE ?", "%"+strings.TrimSpace(searchReq.Keyword)+"%")
+	}
+
+	if searchReq.OrderBy != "" {
+		tx = tx.Order(searchReq.OrderBy + " " + searchReq.OrderDirection)
 	}
 
 	var result []dao.ContentMessage
