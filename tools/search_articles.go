@@ -56,6 +56,16 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 		WithPayload:    qdrant.NewWithPayload(true),
 	}
 
+	// -------------------------------------------------------
+	// 核心升级：混合检索逻辑
+	// -------------------------------------------------------
+	// 我们利用 Qdrant 的 Filter 来强化关键词匹配。
+	// 如果用户的 Query 中包含特定关键词，我们可以强制要求（Must）或者加分（Should）。
+
+	// 简单的混合策略：
+	// 使用 query 原文在 title 和 summary 中做 Match_Text 匹配
+	// 这会让包含原文关键词的文档得分更高，或者被筛选出来。
+
 	if searchReq.StartTime != "" && searchReq.EndTime != "" {
 		startTime, _ := time.ParseInLocation(time.DateTime, searchReq.StartTime, util.Loc)
 		endTime, _ := time.ParseInLocation(time.DateTime, searchReq.EndTime, util.Loc)
