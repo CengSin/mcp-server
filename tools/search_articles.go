@@ -9,9 +9,10 @@ import (
 	"log"
 	"mcp/server/ai"
 	"mcp/server/client"
+	"mcp/server/dao"
 	"mcp/server/util"
+	"sort"
 	"strings"
-	"time"
 )
 
 func getSearchArticleTool() mcp.Tool {
@@ -23,8 +24,6 @@ Qdrant 语义检索工具：
 如果问题涉及 “最新”、“时间排序”、“按字段过滤”、“数据库字段精确筛选”，不要使用本工具，应使用 MySQL 工具。
 `),
 		mcp.WithString("query", mcp.Description("自然语言问题或长文本查询，将自动生成向量")),
-		mcp.WithString("start_time", mcp.Description("开始时间，格式为2006-01-02 15:04:05，最早可到2024-01-01 00:00:00")),
-		mcp.WithString("end_time", mcp.Description("结束时间，格式为2006-01-02 15:04:05，最晚可到当前时间")),
 		mcp.WithNumber("score", mcp.Description("相似度阈值，浮点数类型，范围0到1，表示返回结果的最低相似度，默认为0.5")),
 		mcp.WithNumber("limit", mcp.Description("返回结果数量，默认为 5，最大不超过100")))
 	return tool
@@ -39,6 +38,7 @@ type searchArticleReq struct {
 }
 
 func searchArticle(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
+	log.Println("🔍 searchArticle called with params:", params)
 	var searchReq searchArticleReq
 	if err := json.Unmarshal([]byte(params), &searchReq); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -56,54 +56,94 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 		WithPayload:    qdrant.NewWithPayload(true),
 	}
 
-	// -------------------------------------------------------
-	// 核心升级：混合检索逻辑
-	// -------------------------------------------------------
-	// 我们利用 Qdrant 的 Filter 来强化关键词匹配。
-	// 如果用户的 Query 中包含特定关键词，我们可以强制要求（Must）或者加分（Should）。
-
-	// 简单的混合策略：
-	// 使用 query 原文在 title 和 summary 中做 Match_Text 匹配
-	// 这会让包含原文关键词的文档得分更高，或者被筛选出来。
-
-	if searchReq.StartTime != "" && searchReq.EndTime != "" {
-		startTime, _ := time.ParseInLocation(time.DateTime, searchReq.StartTime, util.Loc)
-		endTime, _ := time.ParseInLocation(time.DateTime, searchReq.EndTime, util.Loc)
-		filter := &qdrant.Filter{
-			Should: []*qdrant.Condition{
-				qdrant.NewRange("created_at", &qdrant.Range{
-					Gte: qdrant.PtrOf(float64(startTime.UTC().Unix())),
-					Lte: qdrant.PtrOf(float64(endTime.UTC().Unix())),
-				}),
-			},
-		}
-		q.Filter = filter
-	}
-
 	searchResult, err := client.Qdrant.Query(ctx, q)
 	if err != nil {
 		log.Println("query qdrant failed, err ", err)
 		return mcp.NewToolResultError(fmt.Sprintf("Qdrant search failed: %v", err)), nil
 	}
 
-	// 4. 组装 Prompt (Prompt Engineering)
-	var contextBuilder strings.Builder
-	for _, point := range searchResult {
-		// 只有相似度足够高才用 (阈值过滤)
-		if searchReq.Score > 0 && point.Score < searchReq.Score {
-			continue
-		}
-		// 拼接内容
-		content := point.Payload["summary"].GetStringValue()
-		contextBuilder.WriteString(content)
-		contextBuilder.WriteString("\n---\n")
+	if len(searchResult) == 0 {
+		return mcp.NewToolResultText("未找到相关文章。"), nil
 	}
 
-	contextText := contextBuilder.String()
-	if contextText == "" {
-		contextText = "未找到相关文章。"
-	} else {
-		log.Printf("📖 找到参考资料 (Top match score: %.4f)\n", searchResult[0].Score)
+	// 3. 统计命中文章的分布 (Score Map)
+	// articleID -> 最高得分
+	articleScores := make(map[string]float32)
+	// articleID -> 出现的切片列表
+	articleChunks := make(map[string][]string)
+
+	for _, hit := range searchResult {
+		// 取出 article_id (注意：存入 Qdrant 时必须存这个字段)
+		artID := hit.Payload["article_id"].GetStringValue()
+		if artID == "" {
+			continue
+		}
+
+		// 记录最高分
+		if score, exists := articleScores[artID]; !exists || hit.Score > score {
+			articleScores[artID] = hit.Score
+		}
+
+		// 收集切片文本 (Payload 中的 text 字段)
+		chunkText := hit.Payload["text"].GetStringValue()
+		articleChunks[artID] = append(articleChunks[artID], chunkText)
 	}
-	return mcp.NewToolResultText(contextText), nil
+
+	// 4. 决策策略：我们要读全文还是读切片？
+	// 简单策略：如果得分最高的文章 score > 0.85 (非常相关)，且它就是 Top1，那我们就读它的全文
+	// 或者：如果 Top 5 里面有 3 个切片都属于同一篇文章，也读全文。
+
+	// 这里我们按得分对文章排序
+	var sortedArticles []string
+	for id := range articleScores {
+		sortedArticles = append(sortedArticles, id)
+	}
+	sort.Slice(sortedArticles, func(i, j int) bool {
+		return articleScores[sortedArticles[i]] > articleScores[sortedArticles[j]]
+	})
+
+	topArticleID := sortedArticles[0]
+	topScore := articleScores[topArticleID]
+
+	var finalContextBuilder strings.Builder
+
+	// ------------------------------------------------------------------
+	// 策略分支 A: 命中非常精准，直接读取长文全文
+	// ------------------------------------------------------------------
+	if topScore > 0.82 { // 阈值可调，0.82 经验值
+		// 调用 DAO 去 MySQL 取 1.3w 字的全文
+		fullContent, err := dao.GetFullContentByID(topArticleID)
+		if err == nil && fullContent != "" {
+			finalContextBuilder.WriteString(fmt.Sprintf("【核心参考文章 (ID:%s)】\n%s\n", topArticleID, fullContent))
+
+			// 为了防止漏掉其他关键信息，如果有第二名的文章且分数也不错，可以补充它的摘要
+			//if len(sortedArticles) > 1 {
+			//	secID := sortedArticles[1]
+			//	if articleScores[secID] > 0.75 {
+			//		title, sum, _ := dao.GetArticleSummary(secID)
+			//		finalContextBuilder.WriteString(fmt.Sprintf("\n【补充参考】%s: %s\n", title, sum))
+			//	}
+			//}
+
+			return mcp.NewToolResultText(fullContent), nil
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// 策略分支 B: 命中比较分散，或者分数不高 -> 组装切片 (RAG 标准模式)
+	// ------------------------------------------------------------------
+	// 这种情况可能是用户问了一个跨文章的行业问题，比如“新能源车最近有哪些负面？”
+	// 我们需要把几个不同文章的切片拼起来。
+
+	for _, artID := range sortedArticles {
+		// 简单的去重逻辑
+		chunks := articleChunks[artID]
+		// 这里的 chunks 只是几百字的小片段
+		for _, c := range chunks {
+			finalContextBuilder.WriteString(fmt.Sprintf("...%s...\n", c))
+		}
+		finalContextBuilder.WriteString("\n---\n")
+	}
+
+	return mcp.NewToolResultText(finalContextBuilder.String()), nil
 }
