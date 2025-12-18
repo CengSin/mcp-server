@@ -74,7 +74,7 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 
 	for _, hit := range searchResult {
 		// 取出 article_id (注意：存入 Qdrant 时必须存这个字段)
-		artID := hit.Payload["article_id"].GetStringValue()
+		artID := hit.Payload["id"].GetStringValue()
 		if artID == "" {
 			continue
 		}
@@ -85,7 +85,7 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 		}
 
 		// 收集切片文本 (Payload 中的 text 字段)
-		chunkText := hit.Payload["text"].GetStringValue()
+		chunkText := hit.Payload["textToIndex"].GetStringValue()
 		articleChunks[artID] = append(articleChunks[artID], chunkText)
 	}
 
@@ -116,14 +116,14 @@ func searchArticle(ctx context.Context, request mcp.CallToolRequest, params stri
 		if err == nil && fullContent != "" {
 			finalContextBuilder.WriteString(fmt.Sprintf("【核心参考文章 (ID:%s)】\n%s\n", topArticleID, fullContent))
 
-			// 为了防止漏掉其他关键信息，如果有第二名的文章且分数也不错，可以补充它的摘要
-			//if len(sortedArticles) > 1 {
-			//	secID := sortedArticles[1]
-			//	if articleScores[secID] > 0.75 {
-			//		title, sum, _ := dao.GetArticleSummary(secID)
-			//		finalContextBuilder.WriteString(fmt.Sprintf("\n【补充参考】%s: %s\n", title, sum))
-			//	}
-			//}
+			//为了防止漏掉其他关键信息，如果有第二名的文章且分数也不错，可以补充它的摘要
+			if len(sortedArticles) > 1 {
+				secID := sortedArticles[1]
+				if articleScores[secID] > 0.75 {
+					sum, _ := dao.GetArticleSummary(secID)
+					finalContextBuilder.WriteString(fmt.Sprintf("\n【补充参考】%s\n", sum))
+				}
+			}
 
 			return mcp.NewToolResultText(fullContent), nil
 		}

@@ -2,18 +2,28 @@ package dao
 
 import (
 	"github.com/PuerkitoBio/goquery"
-	"os"
+	"mcp/server/client"
+	"strings"
 )
 
 func GetFullContentByID(id string) (string, error) {
-	file, err := os.Open("test.html")
-	if err != nil {
+	var content string
+	if err := client.Mysql.Table("article_entries").Select("content").Where("id = ?", id).Scan(&content).Error; err != nil {
 		return "", err
 	}
-	defer file.Close()
-	reader, err := goquery.NewDocumentFromReader(file)
+
+	reader, err := goquery.NewDocumentFromReader(strings.NewReader(content))
 	if err != nil {
 		return "", err
 	}
 	return reader.Text(), nil
+}
+
+func GetArticleSummary(id string) (string, error) {
+	var summary string
+	if err := client.Mysql.Table("article_entries").Select("content_short").Where("id = ?", id).Scan(&summary).Error; err != nil {
+		return "", err
+	}
+
+	return summary, nil
 }
