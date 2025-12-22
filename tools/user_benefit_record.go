@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/mark3labs/mcp-go/mcp"
 	"mcp/server/client"
 	"mcp/server/dao"
@@ -22,11 +21,7 @@ type QueryUserBenefitRecords struct {
 	SubjectIds []int `json:"subject_ids"`
 }
 
-func getUserBenefitRecords(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
-	var args QueryUserBenefitRecords
-	if err := json.Unmarshal([]byte(params), &args); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
+func getUserBenefitRecords(ctx context.Context, request mcp.CallToolRequest, args QueryUserBenefitRecords) (*mcp.CallToolResult, error) {
 	var records []dao.ActivityFreeSubject
 	if err := client.Mysql.Model(&dao.ActivityFreeSubject{}).Find(&records, "user_id in (?) and subject_id in (?)", args.UserIds, args.SubjectIds).Error; err != nil {
 		return nil, err

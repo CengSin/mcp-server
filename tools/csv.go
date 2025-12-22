@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/minio/minio-go/v7"
@@ -32,12 +31,7 @@ type GenerateFileReq struct {
 	Content  string `json:"content"`
 }
 
-func generateCsv(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
-	var gr GenerateFileReq
-	if err := json.Unmarshal([]byte(params), &gr); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
+func generateCsv(ctx context.Context, request mcp.CallToolRequest, gr GenerateFileReq) (*mcp.CallToolResult, error) {
 	// A. 解析参数
 	filename := gr.FileName
 	fileType := gr.FileType

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/mark3labs/mcp-go/mcp"
 	"mcp/server/client"
 	"mcp/server/dao"
@@ -37,12 +36,7 @@ type getContentMessagesReq struct {
 	OrderDirection string `json:"order_direction"`
 }
 
-func getContentMessages(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
-	var searchReq getContentMessagesReq
-	if err := json.Unmarshal([]byte(params), &searchReq); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
+func getContentMessages(ctx context.Context, request mcp.CallToolRequest, searchReq getContentMessagesReq) (*mcp.CallToolResult, error) {
 	tx := client.Mysql.Model(&dao.ContentMessage{})
 
 	if searchReq.StartTime != "" && searchReq.EndTime != "" {

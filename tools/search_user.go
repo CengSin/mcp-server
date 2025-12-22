@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
 	"gorm.io/gorm"
@@ -27,11 +26,7 @@ type SearchUserReq struct {
 	Limit     int    `json:"limit"`
 }
 
-func searchUser(ctx context.Context, request mcp.CallToolRequest, params string) (*mcp.CallToolResult, error) {
-	var sq SearchUserReq
-	if err := json.Unmarshal([]byte(params), &sq); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("parse params failed, err %s", err.Error())), nil
-	}
+func searchUser(ctx context.Context, request mcp.CallToolRequest, sq SearchUserReq) (*mcp.CallToolResult, error) {
 	startTime, err := util.ParseTime(sq.StartTime)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("startTime Parse err, %s", err.Error())), nil

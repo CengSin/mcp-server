@@ -14,7 +14,7 @@ mysql:
   port: 3306
   userName: "root"
   password: "rootpassword"
-  DB: "ivanka_content"
+  DB: "baoer"
 
 minIO:
   endpoint: "localhost:9000"
