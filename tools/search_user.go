@@ -15,6 +15,8 @@ func getSearchUserTool() mcp.Tool {
 		mcp.WithDescription("根据自然语言查询用户数据库,支持根据时间范围查询。"),
 		mcp.WithString("start_time", mcp.Description("开始时间，格式为2006-01-02 15:04:05")),
 		mcp.WithString("end_time", mcp.Description("结束时间，格式为2006-01-02 15:04:05")),
+		mcp.WithString("order_by", mcp.Description("排序字段，默认为created_at")),
+		mcp.WithString("sort", mcp.Description("排序类型，默认为desc")),
 		mcp.WithNumber("limit", mcp.Description("查询数量，默认为5")),
 	)
 	return tool
@@ -23,6 +25,8 @@ func getSearchUserTool() mcp.Tool {
 type SearchUserReq struct {
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
+	OrderBy   string `json:"order_by"`
+	Sort      string `json:"sort"`
 	Limit     int    `json:"limit"`
 }
 
