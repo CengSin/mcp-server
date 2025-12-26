@@ -2,53 +2,83 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
-	"gorm.io/gorm"
 	"mcp/server/client"
 	"mcp/server/dao"
-	"mcp/server/util"
+	"time"
 )
 
 func getSearchUserTool() mcp.Tool {
 	tool := mcp.NewTool("search_users",
 		mcp.WithDescription("根据自然语言查询用户数据库,支持根据时间范围查询。"),
-		mcp.WithString("start_time", mcp.Description("开始时间，格式为2006-01-02 15:04:05")),
-		mcp.WithString("end_time", mcp.Description("结束时间，格式为2006-01-02 15:04:05")),
-		mcp.WithString("order_by", mcp.Description("排序字段，默认为created_at")),
-		mcp.WithString("sort", mcp.Description("排序类型，默认为desc")),
-		mcp.WithNumber("limit", mcp.Description("查询数量，默认为5")),
+		mcp.WithInputSchema[SearchUserReq](),
+		mcp.WithOutputSchema[[]*User](),
 	)
 	return tool
 }
 
 type SearchUserReq struct {
-	StartTime string `json:"start_time"`
-	EndTime   string `json:"end_time"`
-	OrderBy   string `json:"order_by"`
-	Sort      string `json:"sort"`
-	Limit     int    `json:"limit"`
+	StartTime *time.Time `json:"start_time" jsonschema_description:"查询开始时间, RFC3339 timestamp, e.g. 2024-12-31T23:59:59+08:00"`
+	EndTime   *time.Time `json:"end_time" jsonschema_description:"查询结束时间, RFC3339 timestamp, e.g. 2024-12-31T23:59:59+08:00"`
+	OrderBy   string     `json:"order_by" jsonschema_description:"排序字段"`
+	Sort      string     `json:"sort" jsonschema_description:"排序规则，desc表示降序，asc表示升序"`
+	Limit     int        `json:"limit" jsonschema_description:"查询数量"`
 }
 
-func searchUser(ctx context.Context, request mcp.CallToolRequest, sq SearchUserReq) (*mcp.CallToolResult, error) {
-	startTime, err := util.ParseTime(sq.StartTime)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("startTime Parse err, %s", err.Error())), nil
-	}
+type User struct {
+	Id           int64
+	Username     string
+	Email        string
+	Mobile       string
+	Nickname     string
+	RealName     string
+	CreatedAt    time.Time
+	LastActiveAt time.Time
+	DeletedAt    *time.Time
+}
 
-	endTime, err := util.ParseTime(sq.EndTime)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("endTime Parse err, %s", err.Error())), nil
-	}
+func (u *User) Eich(u1 *dao.UserModel) {
+	u.Id = u1.Id
+	u.Username = u1.Username.String
+	u.Email = u1.Email.String
+	u.Mobile = u1.Mobile.String
+	u.Nickname = u1.Nickname.String
+	u.RealName = u1.RealName.String
+	u.CreatedAt = u1.CreatedAt
+	u.LastActiveAt = u1.LastActiveAt
+	u.DeletedAt = u1.DeletedAt
+}
 
-	if sq.Limit == 0 {
-		sq.Limit = 5
-	}
-
+func searchUser(ctx context.Context, request mcp.CallToolRequest, sq SearchUserReq) ([]*User, error) {
 	var result []*dao.UserModel
-	if err = client.Mysql.Model(&dao.UserModel{}).Limit(sq.Limit).Find(&result, "created_at between ? and ?", startTime, endTime).Error; err != nil && gorm.ErrRecordNotFound != err {
-		return mcp.NewToolResultError(fmt.Sprintf("query user data err, %s", err.Error())), nil
+	db := client.Mysql.Model(&dao.UserModel{})
+
+	if sq.StartTime != nil {
+		db = db.Where("created_at >= ?", sq.StartTime)
 	}
 
-	return mcp.NewToolResultStructuredOnly(result), nil
+	if sq.EndTime != nil {
+		db = db.Where("created_at <= ?", sq.EndTime)
+	}
+
+	if sq.OrderBy != "" {
+		db = db.Order(sq.OrderBy + " " + sq.Sort)
+	}
+
+	if sq.Limit <= 0 || sq.Limit > 200 {
+		sq.Limit = 200
+	}
+
+	if err := db.Limit(sq.Limit).Scan(&result).Error; err != nil {
+		return nil, err
+	}
+
+	var users []*User
+	for _, u := range result {
+		us := User{}
+		us.Eich(u)
+		users = append(users, &us)
+	}
+
+	return users, nil
 }
