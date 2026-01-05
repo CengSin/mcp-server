@@ -20,7 +20,7 @@ func getSearchUserTool() mcp.Tool {
 type SearchUserReq struct {
 	StartTime *time.Time `json:"start_time" jsonschema_description:"查询开始时间, RFC3339 timestamp, e.g. 2024-12-31T23:59:59+08:00"`
 	EndTime   *time.Time `json:"end_time" jsonschema_description:"查询结束时间, RFC3339 timestamp, e.g. 2024-12-31T23:59:59+08:00"`
-	OrderBy   string     `json:"order_by" jsonschema_description:"排序字段"`
+	OrderBy   string     `json:"order_by" jsonschema_description:"排序字段，目前支持根据创建时间(created_at)，最新活跃时间(last_active_at)排序"`
 	Sort      string     `json:"sort" jsonschema_description:"排序规则，desc表示降序，asc表示升序"`
 	Limit     int        `json:"limit" jsonschema_description:"查询数量"`
 }
